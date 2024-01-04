@@ -200,6 +200,8 @@ void shader_core_ctx::create_schedulers() {
                             : sched_config.find("warp_limiting") !=
                                       std::string::npos
                                   ? CONCRETE_SCHEDULER_WARP_LIMITING
+                                  : sched_config.find("random") != std::string::npos
+                                        ? CONCRETE_SCHEDULER_RANDOM
                                   : NUM_CONCRETE_SCHEDULERS;
   assert(scheduler != NUM_CONCRETE_SCHEDULERS);
 
@@ -207,6 +209,14 @@ void shader_core_ctx::create_schedulers() {
     switch (scheduler) {
       case CONCRETE_SCHEDULER_LRR:
         schedulers.push_back(new lrr_scheduler(
+            m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
+            &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
+            &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
+            &m_pipeline_reg[ID_OC_TENSOR_CORE], m_specilized_dispatch_reg,
+            &m_pipeline_reg[ID_OC_MEM], i));
+        break;
+      case CONCRETE_SCHEDULER_RANDOM:
+        schedulers.push_back(new random_scheduler(
             m_stats, this, m_scoreboard, m_simt_stack, &m_warp,
             &m_pipeline_reg[ID_OC_SP], &m_pipeline_reg[ID_OC_DP],
             &m_pipeline_reg[ID_OC_SFU], &m_pipeline_reg[ID_OC_INT],
@@ -1101,6 +1111,17 @@ shd_warp_t &scheduler_unit::warp(int i) { return *((*m_warp)[i]); }
  * result_list.
  */
 template <class T>
+void scheduler_unit::order_randomMal(
+    std::vector<T> &result_list, const typename std::vector<T> &input_list,
+    const typename std::vector<T>::const_iterator &last_issued_from_input,
+    unsigned num_warps_to_add) {
+  assert(num_warps_to_add <= input_list.size());
+  result_list.clear();
+
+  unsigned int randN = rand() % input_list.size(); // Maybe this doesn't work.
+  result_list.push_back(&warp(randN));
+}
+template <class T>
 void scheduler_unit::order_lrr(
     std::vector<T> &result_list, const typename std::vector<T> &input_list,
     const typename std::vector<T>::const_iterator &last_issued_from_input,
@@ -1114,6 +1135,27 @@ void scheduler_unit::order_lrr(
   for (unsigned count = 0; count < num_warps_to_add; ++iter, ++count) {
     if (iter == input_list.end()) {
       iter = input_list.begin();
+    }
+    result_list.push_back(*iter);
+  }
+}
+template <class T>
+void scheduler_unit::order_random(
+    std::vector<T> &result_list, const typename std::vector<T> &input_list,
+    const typename std::vector<T>::const_iterator &last_issued_from_input,
+    unsigned num_warps_to_add) {
+  assert(num_warps_to_add <= input_list.size());
+  result_list.clear();
+  typename std::vector<T>::const_iterator iter =
+      (last_issued_from_input == input_list.end()) ? input_list.begin()
+                                                   : last_issued_from_input + 1;
+
+  unsigned int randN = rand() % input_list.size();
+  result_list.push_back(&warp(randN)); // Puede ser que esto sea que necesito rellenar el resto de hilos
+  
+  for (unsigned count = 0; count < num_warps_to_add; ++iter, ++count) {
+    if (iter == input_list.end()) {
+      iter = input_list.begin() +1;
     }
     result_list.push_back(*iter);
   }
@@ -1146,6 +1188,7 @@ void scheduler_unit::order_rrr(
     result_list.push_back(&warp(m_current_turn_warp));
   }
 }
+
 /**
  * A general function to order things in an priority-based way.
  * The core usage of the function is similar to order_lrr.
@@ -1527,6 +1570,11 @@ void lrr_scheduler::order_warps() {
   order_lrr(m_next_cycle_prioritized_warps, m_supervised_warps,
             m_last_supervised_issued, m_supervised_warps.size());
 }
+void random_scheduler::order_warps(){
+  order_random(m_next_cycle_prioritized_warps, m_supervised_warps,
+            m_last_supervised_issued, m_supervised_warps.size());
+}
+
 void rrr_scheduler::order_warps() {
   order_rrr(m_next_cycle_prioritized_warps, m_supervised_warps,
             m_last_supervised_issued, m_supervised_warps.size());
@@ -4578,7 +4626,7 @@ void simt_core_cluster::get_L1I_sub_stats(struct cache_sub_stats &css) const {
     total_css += temp_css;
   }
   css = total_css;
-}
+} 
 void simt_core_cluster::get_L1D_sub_stats(struct cache_sub_stats &css) const {
   struct cache_sub_stats temp_css;
   struct cache_sub_stats total_css;

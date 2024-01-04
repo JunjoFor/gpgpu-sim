@@ -307,11 +307,26 @@ enum cache_request_status tag_array::probe(new_addr_type addr, unsigned &idx,
             if (line->get_alloc_time() < valid_timestamp) {
               valid_timestamp = line->get_alloc_time();
               valid_line = index;
+            } else if (m_config.m_replacement_policy == NRU){
+              if(!line->is_recently_used()) {
+                valid_line = index;
+              }
             }
           }
         }
       }
     }
+  } 
+  // NRU: Mirar valid_line != valido, Seleccionar una de las vias
+  if (valid_line == (unsigned)-1) {
+    valid_line = set_index * m_config.m_assoc + (rand()% m_config.m_assoc);
+  }
+
+  // Resetear el reference_bit 
+  for(unsigned way = 0; way < m_config.m_assoc; way++){
+    unsigned index = set_index * m_config.m_assoc + way;
+    cache_block_t *line = m_lines[index];
+    line->unset_recently_used();
   }
   if (all_reserved) {
     assert(m_config.m_alloc_policy == ON_MISS);
@@ -352,6 +367,7 @@ enum cache_request_status tag_array::access(new_addr_type addr, unsigned time,
       m_pending_hit++;
     case HIT:
       m_lines[idx]->set_last_access_time(time, mf->get_access_sector_mask());
+      m_lines[idx]->set_recently_used();
       break;
     case MISS:
       m_miss++;

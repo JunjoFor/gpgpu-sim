@@ -35,7 +35,30 @@ unsigned ipoly_hash_function(new_addr_type higher_bits, unsigned index,
    * exit in GPGPU applications and also show good performance for other
    * strides.
    */
-  if (bank_set_num == 16) {
+  
+  if (bank_set_num == 2) {
+    std::bitset<64> a(higher_bits);
+    std::bitset<1> b(index);
+    std::bitset<1> new_index(index);
+
+    new_index[0] =
+        a[0] ^ b[0];
+
+    return new_index.to_ulong();
+    
+  } else if (bank_set_num == 4) {
+    std::bitset<64> a(higher_bits);
+    std::bitset<4> b(index);
+    std::bitset<4> new_index(index);
+
+    new_index[0] =
+        a[11] ^ a[10] ^ a[9] ^ a[8] ^ a[6] ^ a[4] ^ a[3] ^ a[0] ^ b[0];
+    new_index[1] =
+        a[12] ^ a[8] ^ a[7] ^ a[6] ^ a[5] ^ a[3] ^ a[1] ^ a[0] ^ b[1];
+
+    return new_index.to_ulong();
+
+  }else if (bank_set_num == 16) {
     std::bitset<64> a(higher_bits);
     std::bitset<4> b(index);
     std::bitset<4> new_index(index);
@@ -85,6 +108,7 @@ unsigned ipoly_hash_function(new_addr_type higher_bits, unsigned index,
         a[17] ^ a[16] ^ a[15] ^ a[14] ^ a[11] ^ a[9] ^ a[5] ^ a[4] ^ b[5];
     return new_index.to_ulong();
   } else { /* Else incorrect number of channels for the hashing function */
+    std::cerr << "El numero de bancos es :" << bank_set_num << "\n";
     assert(
         "\nmemory_partition_indexing error: The number of "
         "channels should be "

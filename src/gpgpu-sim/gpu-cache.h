@@ -142,6 +142,9 @@ struct cache_block_t {
   virtual unsigned long long get_last_access_time() = 0;
   virtual void set_last_access_time(unsigned long long time,
                                     mem_access_sector_mask_t sector_mask) = 0;
+  virtual void set_recently_used() = 0;
+  virtual void unset_recently_used() = 0;
+  virtual bool is_recently_used() = 0;
   virtual unsigned long long get_alloc_time() = 0;
   virtual void set_ignore_on_fill(bool m_ignore,
                                   mem_access_sector_mask_t sector_mask) = 0;
@@ -166,6 +169,7 @@ struct line_cache_block : public cache_block_t {
     m_alloc_time = 0;
     m_fill_time = 0;
     m_last_access_time = 0;
+    m_recently_used = 0;
     m_status = INVALID;
     m_ignore_on_fill_status = false;
     m_set_modified_on_fill = false;
@@ -178,6 +182,7 @@ struct line_cache_block : public cache_block_t {
     m_block_addr = block_addr;
     m_alloc_time = time;
     m_last_access_time = time;
+    m_last_access_time = 0;
     m_fill_time = 0;
     m_status = RESERVED;
     m_ignore_on_fill_status = false;
@@ -231,6 +236,15 @@ struct line_cache_block : public cache_block_t {
                                     mem_access_sector_mask_t sector_mask) {
     m_last_access_time = time;
   }
+  virtual void set_recently_used(){
+    m_recently_used = true;
+  }
+  virtual void unset_recently_used(){
+    m_recently_used = false;
+  }
+  virtual bool is_recently_used(){
+    return m_recently_used;
+  }
   virtual unsigned long long get_alloc_time() { return m_alloc_time; }
   virtual void set_ignore_on_fill(bool m_ignore,
                                   mem_access_sector_mask_t sector_mask) {
@@ -271,6 +285,7 @@ struct line_cache_block : public cache_block_t {
   bool m_set_readable_on_fill;
   bool m_set_byte_mask_on_fill;
   bool m_readable;
+  bool m_recently_used;
   mem_access_byte_mask_t m_dirty_byte_mask;
 };
 
@@ -432,6 +447,15 @@ struct sector_cache_block : public cache_block_t {
     m_last_sector_access_time[sidx] = time;
     m_line_last_access_time = time;
   }
+  virtual void set_recently_used(){
+    m_recently_used = true;
+  }
+  virtual void unset_recently_used(){
+    m_recently_used = false;
+  }
+  virtual bool is_recently_used(){
+    return m_recently_used;
+  }
 
   virtual unsigned long long get_alloc_time() { return m_line_alloc_time; }
 
@@ -487,6 +511,7 @@ struct sector_cache_block : public cache_block_t {
   unsigned m_line_last_access_time;
   unsigned m_line_fill_time;
   cache_block_state m_status[SECTOR_CHUNCK_SIZE];
+  bool m_recently_used;
   bool m_ignore_on_fill_status[SECTOR_CHUNCK_SIZE];
   bool m_set_modified_on_fill[SECTOR_CHUNCK_SIZE];
   bool m_set_readable_on_fill[SECTOR_CHUNCK_SIZE];
@@ -503,7 +528,7 @@ struct sector_cache_block : public cache_block_t {
   }
 };
 
-enum replacement_policy_t { LRU, FIFO };
+enum replacement_policy_t { LRU, FIFO, NRU };
 
 enum write_policy_t {
   READ_ONLY,
@@ -595,6 +620,10 @@ class cache_config {
         break;
       case 'F':
         m_replacement_policy = FIFO;
+        break;
+      case 'N':
+        m_replacement_policy = NRU;
+        printf("Se ha leido bien el NRU\n");
         break;
       default:
         exit_parse_error();
@@ -861,7 +890,7 @@ class cache_config {
   unsigned original_m_assoc;
   bool m_is_streaming;
 
-  enum replacement_policy_t m_replacement_policy;  // 'L' = LRU, 'F' = FIFO
+  enum replacement_policy_t m_replacement_policy;  // 'L' = LRU, 'F' = FIFO, 'N' = NRU
   enum write_policy_t
       m_write_policy;  // 'T' = write through, 'B' = write back, 'R' = read only
   enum allocation_policy_t

@@ -327,6 +327,7 @@ enum concrete_scheduler {
   CONCRETE_SCHEDULER_RRR,
   CONCRETE_SCHEDULER_WARP_LIMITING,
   CONCRETE_SCHEDULER_OLDEST_FIRST,
+  CONCRETE_SCHEDULER_RANDOM,
   NUM_CONCRETE_SCHEDULERS
 };
 
@@ -372,6 +373,18 @@ class scheduler_unit {  // this can be copied freely, so can be used in std
   // higher order schedulers can take advantage of
   template <typename T>
   void order_lrr(
+      typename std::vector<T> &result_list,
+      const typename std::vector<T> &input_list,
+      const typename std::vector<T>::const_iterator &last_issued_from_input,
+      unsigned num_warps_to_add);
+  template <typename T>
+  void order_random(
+      typename std::vector<T> &result_list,
+      const typename std::vector<T> &input_list,
+      const typename std::vector<T>::const_iterator &last_issued_from_input,
+      unsigned num_warps_to_add);
+    template <typename T>
+  void order_randomMal(
       typename std::vector<T> &result_list,
       const typename std::vector<T> &input_list,
       const typename std::vector<T>::const_iterator &last_issued_from_input,
@@ -459,6 +472,25 @@ class lrr_scheduler : public scheduler_unit {
                        sfu_out, int_out, tensor_core_out, spec_cores_out,
                        mem_out, id) {}
   virtual ~lrr_scheduler() {}
+  virtual void order_warps();
+  virtual void done_adding_supervised_warps() {
+    m_last_supervised_issued = m_supervised_warps.end();
+  }
+};
+
+class random_scheduler : public scheduler_unit {
+ public:
+  random_scheduler(shader_core_stats *stats, shader_core_ctx *shader,
+                Scoreboard *scoreboard, simt_stack **simt,
+                std::vector<shd_warp_t *> *warp, register_set *sp_out,
+                register_set *dp_out, register_set *sfu_out,
+                register_set *int_out, register_set *tensor_core_out,
+                std::vector<register_set *> &spec_cores_out,
+                register_set *mem_out, int id)
+      : scheduler_unit(stats, shader, scoreboard, simt, warp, sp_out, dp_out,
+                       sfu_out, int_out, tensor_core_out, spec_cores_out,
+                       mem_out, id) {}
+  virtual ~random_scheduler() {}
   virtual void order_warps();
   virtual void done_adding_supervised_warps() {
     m_last_supervised_issued = m_supervised_warps.end();
